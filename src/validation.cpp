@@ -55,6 +55,9 @@
 #include <string>
 
 #include <boost/algorithm/string/replace.hpp>
+#include <boost/random/mersenne_twister.hpp>
+#include <boost/random/uniform_int_distribution.hpp>
+
 
 #define MICRO 0.000001
 #define MILLI 0.001
@@ -1263,17 +1266,66 @@ bool ReadRawBlockFromDisk(std::vector<uint8_t>& block, const CBlockIndex* pindex
     return ReadRawBlockFromDisk(block, block_pos, message_start);
 }
 
-CAmount GetBlockSubsidy(int nHeight, const Consensus::Params& consensusParams)
+int static generateMTRandom(unsigned int s, int range)
 {
-    int halvings = nHeight / consensusParams.nSubsidyHalvingInterval;
-    // Force block reward to zero when right shift is undefined.
-    if (halvings >= 64)
-        return 0;
+	boost::random::mt19937 gen(s);
+    boost::random::uniform_int_distribution<> dist(1, range);
+    return dist(gen);
+}
 
-    CAmount nSubsidy = 50 * COIN;
-    // Subsidy is cut in half every 210,000 blocks which will occur approximately every 4 years.
-    nSubsidy >>= halvings;
-    return nSubsidy;
+CAmount GetBlockSubsidy(int nHeight, CAmount nFees, const Consensus::Params& consensusParams)
+{
+
+    CAmount nSubsidy = 2 * COIN;
+
+    if(nHeight < 101) {
+        nSubsidy = 2 * COIN; //first 100 blocks have minimal rewards
+    } else {
+        int rand = generateMTRandom(nHeight, 1000);
+        if (nHeight < 129600) {
+            if(rand >= 990) {
+                nSubsidy = 10000 * COIN;
+            } else if (rand >= 940) {
+                nSubsidy = 1000 * COIN;
+            } else if (rand >= 840) {
+                nSubsidy = 500 * COIN;
+            } else if (rand >= 700) {
+                nSubsidy = 250 * COIN;
+            } else if (rand >= 500) {
+		nSubsidy = 100 * COIN;
+	    } else if (rand <= 499) {
+		nSubsidy = 50 * COIN;
+	    }
+        } else if(nHeight < 259200) {
+            if (rand >= 990) {
+                nSubsidy = 5000 * COIN;
+            } else if (rand >= 940) {
+                nSubsidy = 500 * COIN;
+            } else if (rand >= 840) {
+                nSubsidy = 250 * COIN;
+            } else if (rand >= 700) {
+                nSubsidy = 125 * COIN;
+            } else if (rand >= 500) {
+                nSubsidy = 50 * COIN;
+            } else if (rand <= 499) {
+                nSubsidy = 25 * COIN;
+            }
+        } else if(nHeight < 518400) {
+	    if (rand >= 990) {
+                nSubsidy = 500 * COIN;
+            } else if (rand >= 940) {
+                nSubsidy = 50 * COIN;
+            } else if (rand >= 840) {
+                nSubsidy = 25 * COIN;
+            } else if (rand >= 500) {
+                nSubsidy = 10 * COIN; 
+            } else if (rand <= 499) {
+                nSubsidy = 5 * COIN;
+            }
+        } 
+    }
+
+    return nFees + nSubsidy;
 }
 
 CoinsViews::CoinsViews(
@@ -2263,7 +2315,8 @@ bool CChainState::ConnectBlock(const CBlock& block, BlockValidationState& state,
     int64_t nTime3 = GetTimeMicros(); nTimeConnect += nTime3 - nTime2;
     LogPrint(BCLog::BENCH, "      - Connect %u transactions: %.2fms (%.3fms/tx, %.3fms/txin) [%.2fs (%.2fms/blk)]\n", (unsigned)block.vtx.size(), MILLI * (nTime3 - nTime2), MILLI * (nTime3 - nTime2) / block.vtx.size(), nInputs <= 1 ? 0 : MILLI * (nTime3 - nTime2) / (nInputs-1), nTimeConnect * MICRO, nTimeConnect * MILLI / nBlocksTotal);
 
-    CAmount blockReward = nFees + GetBlockSubsidy(pindex->nHeight, chainparams.GetConsensus());
+    CAmount blockReward = GetBlockSubsidy(pindex->nHeight, nFees, chainparams.GetConsensus());
+
     if (block.vtx[0]->GetValueOut() > blockReward) {
         LogPrintf("ERROR: ConnectBlock(): coinbase pays too much (actual=%d vs limit=%d)\n", block.vtx[0]->GetValueOut(), blockReward);
         return state.Invalid(BlockValidationResult::BLOCK_CONSENSUS, "bad-cb-amount");

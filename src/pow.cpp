@@ -56,33 +56,48 @@ unsigned int GetNextWorkRequired(const CBlockIndex* pindexLast, const CBlockHead
 
 unsigned int CalculateNextWorkRequired(const CBlockIndex* pindexLast, int64_t nFirstBlockTime, const Consensus::Params& params)
 {
+    unsigned int nProofOfWorkLimit = UintToArith256(params.powLimit).GetCompact();
+
     if (params.fPowNoRetargeting)
         return pindexLast->nBits;
 
     // Limit adjustment step
     int64_t nActualTimespan = pindexLast->GetBlockTime() - nFirstBlockTime;
-    if (nActualTimespan < params.nPowTargetTimespan/4)
-        nActualTimespan = params.nPowTargetTimespan/4;
-    if (nActualTimespan > params.nPowTargetTimespan*4)
-        nActualTimespan = params.nPowTargetTimespan*4;
+    
 
-    // Retarget
+    if(pindexLast->nHeight+1 > 10000)	
+	{
+		if (nActualTimespan < params.nPowTargetTimespan/4)
+			nActualTimespan = params.nPowTargetTimespan/4;
+		if (nActualTimespan > params.nPowTargetTimespan*4)
+			nActualTimespan = params.nPowTargetTimespan*4;
+	}
+	else if(pindexLast->nHeight+1 > 5000)
+	{
+		if (nActualTimespan < params.nPowTargetTimespan/8)
+			nActualTimespan = params.nPowTargetTimespan/8;
+		if (nActualTimespan > params.nPowTargetTimespan*4)
+			nActualTimespan = params.nPowTargetTimespan*4;
+	}
+	else 
+	{
+		if (nActualTimespan < params.nPowTargetTimespan/16)
+			nActualTimespan = params.nPowTargetTimespan/16;
+		if (nActualTimespan > params.nPowTargetTimespan*4)
+			nActualTimespan = params.nPowTargetTimespan*4;
+	}
+
     arith_uint256 bnNew;
-    arith_uint256 bnOld;
     bnNew.SetCompact(pindexLast->nBits);
-    bnOld = bnNew;
-    // Litecoin: intermediate uint256 can overflow by 1 bit
-    const arith_uint256 bnPowLimit = UintToArith256(params.powLimit);
-    bool fShift = bnNew.bits() > bnPowLimit.bits() - 1;
-    if (fShift)
-        bnNew >>= 1;
+
     bnNew *= nActualTimespan;
     bnNew /= params.nPowTargetTimespan;
-    if (fShift)
-        bnNew <<= 1;
+    
+    const arith_uint256 bnPowLimit = UintToArith256(params.powLimit);
 
     if (bnNew > bnPowLimit)
         bnNew = bnPowLimit;
+
 
     return bnNew.GetCompact();
 }
@@ -96,7 +111,7 @@ bool CheckProofOfWork(uint256 hash, unsigned int nBits, const Consensus::Params&
     bnTarget.SetCompact(nBits, &fNegative, &fOverflow);
 
     // Check range
-    if (fNegative || bnTarget == 0 || fOverflow || bnTarget > UintToArith256(params.powLimit))
+    if (fNegative || bnTarget == 0 || bnTarget > UintToArith256(params.powLimit))
         return false;
 
     // Check proof of work matches claimed amount
